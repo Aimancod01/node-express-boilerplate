@@ -1,0 +1,15 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "feature/postgresql-prisma",
+    "main"
+  ],
+  "parent": {
+    "feature/postgresql-prisma": "main",
+    "main": null
+  },
+  "order": [
+    "main",
+    "feature/postgresql-prisma"
+  ]
+}
