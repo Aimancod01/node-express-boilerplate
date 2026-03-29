@@ -4,8 +4,6 @@ import {
 	INVALID_ACCESS_TOKEN,
 	NOT_ENOUGH_RIGHTS,
 	UNAUTHORIZED,
-	USER_NOT_FOUND,
-	OTP_NOT_VERIFIED,
 } from '../constants';
 import { AppError } from '../errors';
 import { verifyAccessToken, verifyOtpToken } from '../utils';
@@ -75,7 +73,6 @@ export const checkAuth = async (req, res, next) => {
 
 export const varifyOTP = async (req, res, next) => {
 	try {
-		const { otp } = req.body;
 		const { id } = req.params;
 
 		// In a real app, fetch user from database and verify OTP

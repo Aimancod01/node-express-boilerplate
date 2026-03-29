@@ -57,3 +57,6 @@ dist
 
 uploads/*
 temp_uploads/*
+
+/generated/prisma
+config.bat

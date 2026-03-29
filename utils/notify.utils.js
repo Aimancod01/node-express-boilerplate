@@ -1,9 +1,12 @@
+/* eslint-disable import/extensions */
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 import ejs from 'ejs';
 
-import { sendEmail } from './email.utils';
+import { sendEmail } from './email.utils.js';
+import { prisma } from './prisma.js';
+
 import {
 	SUPPORT_EMAIL,
 	// FACEBOOK_URL,

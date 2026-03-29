@@ -1,12 +1,9 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import HttpStatus from 'http-status-codes';
 
 import { USER_NOT_FOUND, ACCOUNT_STATUS } from '../constants';
 import { AppError } from '../errors';
-import { generateRandomString } from '../utils';
-
-// In-memory user storage (replace with your database)
-const users = [];
+import { generateRandomString, prisma } from '../utils';
 
 export class UserService {
 	constructor(req) {
@@ -14,51 +11,48 @@ export class UserService {
 		this.body = req.body;
 	}
 
-	async getAllUsers() {
+	async getAllUsers(roleName) {
 		const { query } = this.req;
 
-		let { page, limit, sort, ...search } = query;
+		let { page, limit } = query;
+		const { sort, ...search } = query;
 
 		page = parseInt(page, 10) || 1;
 		limit = parseInt(limit, 10) || 100;
 
-		let filteredUsers = users.filter(u => !u.deleted);
+		const where = { deleted: false };
+		if (roleName) {
+			where.role = { name: roleName };
+		}
 
 		// Apply search filters
 		if (search && Object.keys(search).length > 0) {
-			filteredUsers = filteredUsers.filter(user => {
-				return Object.keys(search).every(key => {
-					const searchValue = search[key];
-					const userValue = user[key];
-
-					if (
-						!Number.isNaN(searchValue) &&
-						!Number.isNaN(parseFloat(searchValue))
-					) {
-						return userValue === searchValue;
-					}
-					return userValue && userValue.toString().includes(searchValue);
-				});
+			Object.keys(search).forEach(key => {
+				where[key] = {
+					contains: search[key].toString(),
+					mode: 'insensitive',
+				};
 			});
 		}
 
 		// Apply sorting
+		const orderBy = {};
 		if (sort) {
 			const [field, direction] = sort.split(':');
-			filteredUsers.sort((a, b) => {
-				if (direction === 'asc') {
-					return a[field] > b[field] ? 1 : -1;
-				}
-				return a[field] < b[field] ? 1 : -1;
-			});
+			orderBy[field] = direction === 'asc' ? 'asc' : 'desc';
 		}
 
-		const totalCount = filteredUsers.length;
+		const totalCount = await prisma.user.count({ where });
 		const totalPages = Math.ceil(totalCount / limit);
 
 		// Pagination
 		const start = (page - 1) * limit;
-		const paginatedUsers = filteredUsers.slice(start, start + limit);
+		const paginatedUsers = await prisma.user.findMany({
+			where,
+			orderBy,
+			skip: start,
+			take: limit,
+		});
 
 		// Remove sensitive fields
 		const allRecords = paginatedUsers.map(user => this.publicProfile(user));
@@ -73,7 +67,9 @@ export class UserService {
 
 	async getUser() {
 		const { id } = this.req.params;
-		const user = users.find(u => u.id === parseInt(id, 10) && !u.deleted);
+		const user = await prisma.user.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
 		if (!user) throw new AppError(USER_NOT_FOUND, HttpStatus.NOT_FOUND);
 
@@ -90,64 +86,60 @@ export class UserService {
 
 		body.password = await bcrypt.hash(password, 12);
 		body.status = ACCOUNT_STATUS.ACTIVE;
-		body.id = users.length + 1;
 		body.created_by = user ? user.id : null;
-		body.created_at = new Date();
-		body.updated_at = new Date();
-		body.deleted = false;
 
-		users.push(body);
+		const newUser = await prisma.user.create({
+			data: body,
+		});
 
-		return this.publicProfile(body);
+		return this.publicProfile(newUser);
 	}
 
 	async updateUser() {
 		const { id } = this.req.params;
 		const { body } = this.req;
 
-		const userIndex = users.findIndex(
-			u => u.id === parseInt(id, 10) && !u.deleted,
-		);
+		const existing = await prisma.user.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
-		if (userIndex === -1)
-			throw new AppError(USER_NOT_FOUND, HttpStatus.NOT_FOUND);
+		if (!existing) throw new AppError(USER_NOT_FOUND, HttpStatus.NOT_FOUND);
 
-		users[userIndex] = {
-			...users[userIndex],
-			...body,
-			updated_at: new Date(),
-		};
+		const updatedUser = await prisma.user.update({
+			where: { id: parseInt(id, 10) },
+			data: body,
+		});
 
-		return this.publicProfile(users[userIndex]);
+		return this.publicProfile(updatedUser);
 	}
 
 	async updateManyUser() {
 		const { ids, status } = this.req.body;
 
-		let updateCount = 0;
-		users.forEach((user, index) => {
-			if (ids.includes(user.id) && !user.deleted) {
-				users[index].status = status;
-				users[index].updated_at = new Date();
-				updateCount++;
-			}
+		const result = await prisma.user.updateMany({
+			where: {
+				id: { in: ids },
+				deleted: false,
+			},
+			data: { status },
 		});
 
-		return { count: updateCount };
+		return { count: result.count };
 	}
 
 	async deleteUser() {
 		const { id } = this.req.params;
 
-		const userIndex = users.findIndex(
-			u => u.id === parseInt(id, 10) && !u.deleted,
-		);
+		const existing = await prisma.user.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
-		if (userIndex === -1)
-			throw new AppError(USER_NOT_FOUND, HttpStatus.NOT_FOUND);
+		if (!existing) throw new AppError(USER_NOT_FOUND, HttpStatus.NOT_FOUND);
 
-		users[userIndex].deleted = true;
-		users[userIndex].updated_at = new Date();
+		await prisma.user.update({
+			where: { id: parseInt(id, 10) },
+			data: { deleted: true },
+		});
 
 		return null;
 	}
@@ -155,16 +147,18 @@ export class UserService {
 	async deleteManyUser() {
 		const { ids } = this.req.body;
 
-		users.forEach((user, index) => {
-			if (ids.includes(user.id) && !user.deleted) {
-				users[index].deleted = true;
-				users[index].updated_at = new Date();
-			}
+		await prisma.user.updateMany({
+			where: {
+				id: { in: ids },
+				deleted: false,
+			},
+			data: { deleted: true },
 		});
 
 		return null;
 	}
 
+	// eslint-disable-next-line class-methods-use-this
 	publicProfile(user) {
 		const record = { ...user };
 		if (!record || !record.id)

@@ -2,12 +2,7 @@ import HttpStatus from 'http-status-codes';
 
 import { ROLE_NOT_FOUND } from '../constants';
 import { AppError } from '../errors';
-
-// In-memory role storage (replace with your database)
-const roles = [
-	{ id: 1, name: 'Admin', description: 'Administrator', deleted: false },
-	{ id: 2, name: 'User', description: 'Regular User', deleted: false },
-];
+import { prisma } from '../utils';
 
 export class RoleService {
 	constructor(req) {
@@ -18,51 +13,43 @@ export class RoleService {
 	async getAllRoles() {
 		const { query } = this.req;
 
-		let { page, limit, sort, ...search } = query;
+		let { page, limit } = query;
+		const { sort, ...search } = query;
 
 		page = parseInt(page, 10) || 1;
 		limit = parseInt(limit, 10) || 100;
 
-		let filteredRoles = roles.filter(r => !r.deleted);
+		const where = { deleted: false };
 
 		// Apply search filters
 		if (search && Object.keys(search).length > 0) {
-			filteredRoles = filteredRoles.filter(role => {
-				return Object.keys(search).every(key => {
-					const searchValue = search[key];
-					const roleValue = role[key];
-
-					if (
-						!Number.isNaN(searchValue) &&
-						!Number.isNaN(parseFloat(searchValue))
-					) {
-						return roleValue === searchValue;
-					}
-					return roleValue && roleValue.toString().includes(searchValue);
-				});
+			Object.keys(search).forEach(key => {
+				where[key] = {
+					contains: search[key].toString(),
+					mode: 'insensitive',
+				};
 			});
 		}
 
-		// Apply sorting
+		const orderBy = {};
 		if (sort) {
 			const [field, direction] = sort.split(':');
-			filteredRoles.sort((a, b) => {
-				if (direction === 'asc') {
-					return a[field] > b[field] ? 1 : -1;
-				}
-				return a[field] < b[field] ? 1 : -1;
-			});
+			orderBy[field] = direction === 'asc' ? 'asc' : 'desc';
 		}
 
-		const totalCount = filteredRoles.length;
+		const totalCount = await prisma.role.count({ where });
 		const totalPages = Math.ceil(totalCount / limit);
 
-		// Pagination
 		const start = (page - 1) * limit;
-		const paginatedRoles = filteredRoles.slice(start, start + limit);
+		const records = await prisma.role.findMany({
+			where,
+			orderBy,
+			skip: start,
+			take: limit,
+		});
 
 		return {
-			records: paginatedRoles,
+			records,
 			totalRecords: totalCount,
 			totalPages,
 			query,
@@ -71,7 +58,9 @@ export class RoleService {
 
 	async getRole() {
 		const { id } = this.req.params;
-		const role = roles.find(r => r.id === parseInt(id, 10) && !r.deleted);
+		const role = await prisma.role.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
 		if (!role) throw new AppError(ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
 
@@ -81,44 +70,47 @@ export class RoleService {
 	async createRole() {
 		const { body } = this.req;
 
-		body.id = roles.length + 1;
-		body.created_at = new Date();
-		body.updated_at = new Date();
-		body.deleted = false;
+		const role = await prisma.role.create({
+			data: {
+				name: body.name,
+				description: body.description,
+			},
+		});
 
-		roles.push(body);
-
-		return body;
+		return role;
 	}
 
 	async updateRole() {
 		const { id } = this.req.params;
 		const { body } = this.req;
 
-		const roleIndex = roles.findIndex(
-			r => r.id === parseInt(id, 10) && !r.deleted,
-		);
+		const existing = await prisma.role.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
-		if (roleIndex === -1)
-			throw new AppError(ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
+		if (!existing) throw new AppError(ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
 
-		roles[roleIndex] = { ...roles[roleIndex], ...body, updated_at: new Date() };
+		const role = await prisma.role.update({
+			where: { id: parseInt(id, 10) },
+			data: body,
+		});
 
-		return roles[roleIndex];
+		return role;
 	}
 
 	async deleteRole() {
 		const { id } = this.req.params;
 
-		const roleIndex = roles.findIndex(
-			r => r.id === parseInt(id, 10) && !r.deleted,
-		);
+		const existing = await prisma.role.findFirst({
+			where: { id: parseInt(id, 10), deleted: false },
+		});
 
-		if (roleIndex === -1)
-			throw new AppError(ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
+		if (!existing) throw new AppError(ROLE_NOT_FOUND, HttpStatus.NOT_FOUND);
 
-		roles[roleIndex].deleted = true;
-		roles[roleIndex].updated_at = new Date();
+		await prisma.role.update({
+			where: { id: parseInt(id, 10) },
+			data: { deleted: true },
+		});
 
 		return null;
 	}
