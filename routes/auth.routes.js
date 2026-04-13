@@ -17,17 +17,13 @@ import {
 	resetCheck,
 } from '../middlewares';
 import {
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-
+	forgotSchema,
 	loginSchema,
 	registerSchema,
-	verifySchema,
 	resendOTPSchema,
-	forgotSchema,
 	resetSchema,
-} from '../validations';
+	verifySchema,
+} from '../validations/auth.validations';
 
 const router = Router();
 

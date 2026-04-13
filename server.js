@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 import compression from 'compression';
 import cors from 'cors';
@@ -18,10 +17,9 @@ import {
 } from './middlewares';
 import { AuthRoutes, RoleRoutes, UserRoutes } from './routes';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
+// Security headers should be set first
+app.use(helmet());
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -32,7 +30,6 @@ app.use(rateLimiter);
 app.use(compression());
 app.use(morganMiddleware);
 app.use(responseTime());
-app.use(helmet());
 
 // CORS configuration
 const corsOptions = {
@@ -60,12 +57,6 @@ app.get('/health', (req, res) => {
 app.use('/api/v1/auth', AuthRoutes);
 app.use('/api/v1/user', UserRoutes);
 app.use('/api/v1/role', RoleRoutes);
-
-app.get('/home', (req, res) => {
-	res
-		.status(200)
-		.json({ success: true, message: `Server is running at port ${PORT}` });
-});
 
 // 404 handler
 app.use('*', notFound);
