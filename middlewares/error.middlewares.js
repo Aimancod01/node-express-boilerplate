@@ -30,5 +30,4 @@ export const errorMiddleware = (error, req, res, next) => {
 			...(errors && { errors }),
 		})
 		.end();
-	next(error);
 };
