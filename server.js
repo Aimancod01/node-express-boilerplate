@@ -44,7 +44,7 @@ app.use('/public', express.static(path.join(path.resolve(), 'temp_uploads')));
 app.use(express.static(path.join(path.resolve(), 'public')));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/', (req, res) => {
 	res.status(200).json({
 		success: true,
 		message: 'Server is healthy',
